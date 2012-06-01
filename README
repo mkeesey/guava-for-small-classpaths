@@ -1,7 +1,18 @@
-Guava: Google Core Libraries for Java
+Guava: Google Core Libraries for Java with modifications for JVMs with limited classpaths.
+
+Guava targets (very reasonably) JVMs like OpenJDK that include the standard Java standard classpath. As as result Google takes advantage of classes within the standard classpath that minimal VMs don't include for executable sizing reasons. Concepts like the EventBus don't fundamentally require concurrency but their current implementions mandate it which this project seeks to eliminate. These goals don't really help Google with their use cases which is why this is more of a fork than an attempt to contribute code to the main Guava code base.
+
+This fork is currently based on the 12.0 version of Google Guava.
 =====================================
 
-Requires JDK 1.6 or higher (as of 12.0).
+Requires JDK 1.6 or higher for many of the classes as this is based on the 12.0 release of Guava from Google. So far this project has focused on breaking EventBus' dependency on ConcurrentHashMap and other classes within java.util.concurrent for use cases when you need a simple single-threaded event bus structure.
+
+Project page:
+ https://github.com/mkeesey/guava-for-small-classpaths
+
+--------------------------------------------------------------------
+Original Google info
+--------------------------------------------------------------------
 
 Project page:
   http://guava-libraries.googlecode.com
