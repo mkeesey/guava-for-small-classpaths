@@ -1,4 +1,4 @@
-Guava: Google Core Libraries for Java with modifications for JVMs with limited classpaths.
+Guava for Small Classpaths: Google Core Libraries for Java with modifications for JVMs with limited classpaths.
 
 Guava targets (very reasonably) JVMs like OpenJDK that include the standard Java standard classpath. As as result Google takes advantage of classes within the standard classpath that minimal VMs don't include for executable sizing reasons. Concepts like the EventBus don't fundamentally require concurrency but their current implementions mandate it which this project seeks to eliminate. These goals don't really help Google with their use cases which is why this is more of a fork than an attempt to contribute code to the main Guava code base.
 
