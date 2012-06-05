@@ -110,7 +110,7 @@ import java.util.logging.Logger;
  * @since 10.0
  */
 @Beta
-public class EventBus {
+public class EventBus extends AbstractEventBus {
 
   /**
    * All registered event handlers, indexed by event type.
@@ -123,19 +123,6 @@ public class EventBus {
               return new CopyOnWriteArraySet<EventHandler>();
             }
           });
-
-  /**
-   * Logger for event dispatch failures.  Named by the fully-qualified name of
-   * this class, followed by the identifier provided at construction.
-   */
-  private final Logger logger;
-
-  /**
-   * Strategy for finding handler methods in registered objects.  Currently,
-   * only the {@link AnnotatedHandlerFinder} is supported, but this is
-   * encapsulated for future expansion.
-   */
-  private final HandlerFindingStrategy finder = new AnnotatedHandlerFinder();
 
   /** queues of events for the current thread to dispatch */
   private final ThreadLocal<ConcurrentLinkedQueue<EventWithHandler>>
@@ -160,31 +147,7 @@ public class EventBus {
   private LoadingCache<Class<?>, Set<Class<?>>> flattenHierarchyCache =
       CacheBuilder.newBuilder()
           .weakKeys()
-          .build(new CacheLoader<Class<?>, Set<Class<?>>>() {
-            @Override
-            public Set<Class<?>> load(Class<?> concreteClass) throws Exception {
-              List<Class<?>> parents = Lists.newLinkedList();
-              Set<Class<?>> classes = Sets.newHashSet();
-
-              parents.add(concreteClass);
-
-              while (!parents.isEmpty()) {
-                Class<?> clazz = parents.remove(0);
-                classes.add(clazz);
-
-                Class<?> parent = clazz.getSuperclass();
-                if (parent != null) {
-                  parents.add(parent);
-                }
-
-                for (Class<?> iface : clazz.getInterfaces()) {
-                  parents.add(iface);
-                }
-              }
-
-              return classes;
-            }
-          });
+          .build(new FlattenedHierarchyCacheLoader());
 
   /**
    * Creates a new EventBus named "default".
@@ -200,72 +163,7 @@ public class EventBus {
    *                    be a valid Java identifier.
    */
   public EventBus(String identifier) {
-    logger = Logger.getLogger(EventBus.class.getName() + "." + identifier);
-  }
-
-  /**
-   * Registers all handler methods on {@code object} to receive events.
-   * Handler methods are selected and classified using this EventBus's
-   * {@link HandlerFindingStrategy}; the default strategy is the
-   * {@link AnnotatedHandlerFinder}.
-   *
-   * @param object  object whose handler methods should be registered.
-   */
-  public void register(Object object) {
-    handlersByType.putAll(finder.findAllHandlers(object));
-  }
-
-  /**
-   * Unregisters all handler methods on a registered {@code object}.
-   *
-   * @param object  object whose handler methods should be unregistered.
-   * @throws IllegalArgumentException if the object was not previously registered.
-   */
-  public void unregister(Object object) {
-    Multimap<Class<?>, EventHandler> methodsInListener = finder.findAllHandlers(object);
-    for (Entry<Class<?>, Collection<EventHandler>> entry : methodsInListener.asMap().entrySet()) {
-      Set<EventHandler> currentHandlers = getHandlersForEventType(entry.getKey());
-      Collection<EventHandler> eventMethodsInListener = entry.getValue();
-      
-      if (currentHandlers == null || !currentHandlers.containsAll(entry.getValue())) {
-        throw new IllegalArgumentException(
-            "missing event handler for an annotated method. Is " + object + " registered?");
-      }
-      currentHandlers.removeAll(eventMethodsInListener);
-    }
-  }
-
-  /**
-   * Posts an event to all registered handlers.  This method will return
-   * successfully after the event has been posted to all handlers, and
-   * regardless of any exceptions thrown by handlers.
-   *
-   * <p>If no handlers have been subscribed for {@code event}'s class, and
-   * {@code event} is not already a {@link DeadEvent}, it will be wrapped in a
-   * DeadEvent and reposted.
-   *
-   * @param event  event to post.
-   */
-  public void post(Object event) {
-    Set<Class<?>> dispatchTypes = flattenHierarchy(event.getClass());
-
-    boolean dispatched = false;
-    for (Class<?> eventType : dispatchTypes) {
-      Set<EventHandler> wrappers = getHandlersForEventType(eventType);
-
-      if (wrappers != null && !wrappers.isEmpty()) {
-        dispatched = true;
-        for (EventHandler wrapper : wrappers) {
-          enqueueEvent(event, wrapper);
-        }
-      }
-    }
-
-    if (!dispatched && !(event instanceof DeadEvent)) {
-      post(new DeadEvent(this, event));
-    }
-
-    dispatchQueuedEvents();
+    super(new AnnotatedHandlerFinder(), EventBus.class.getName() + "." + identifier);
   }
 
   /**
@@ -321,17 +219,6 @@ public class EventBus {
     }
   }
 
-  /**
-   * Retrieves a mutable set of the currently registered handlers for
-   * {@code type}.  If no handlers are currently registered for {@code type},
-   * this method may either return {@code null} or an empty set.
-   *
-   * @param type  type of handlers to retrieve.
-   * @return currently registered handlers, or {@code null}.
-   */
-  Set<EventHandler> getHandlersForEventType(Class<?> type) {
-    return handlersByType.get(type);
-  }
 
   /**
    * Creates a new Set for insertion into the handler map.  This is provided
@@ -353,12 +240,17 @@ public class EventBus {
    * @return {@code clazz}'s complete type hierarchy, flattened and uniqued.
    */
   @VisibleForTesting
-  Set<Class<?>> flattenHierarchy(Class<?> concreteClass) {
+  protected Set<Class<?>> flattenHierarchy(Class<?> concreteClass) {
     try {
       return flattenHierarchyCache.get(concreteClass);
     } catch (ExecutionException e) {
       throw Throwables.propagate(e.getCause());
     }
+  }
+  
+  @Override
+  protected SetMultimap<Class<?>, EventHandler> getHandlersByType() {
+    return handlersByType;
   }
 
   /** simple struct representing an event and it's handler */

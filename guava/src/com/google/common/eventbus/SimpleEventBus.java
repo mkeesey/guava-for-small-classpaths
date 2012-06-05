@@ -19,6 +19,7 @@ package com.google.common.eventbus;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.logging.Level;
 
 import com.google.common.annotations.Beta;
 import com.google.common.collect.HashMultimap;
@@ -52,6 +53,7 @@ public class SimpleEventBus extends AbstractEventBus {
 
   @Override
   protected void enqueueEvent(Object event, EventHandler wrapper) {
+    //no reason to queue them up in this implementation - just send now.
     dispatch(event, wrapper);
   }
 
