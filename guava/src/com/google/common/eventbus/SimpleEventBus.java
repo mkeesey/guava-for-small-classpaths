@@ -17,72 +17,25 @@
 package com.google.common.eventbus;
 
 import java.lang.reflect.InvocationTargetException;
-import java.util.Collection;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.WeakHashMap;
 
 import com.google.common.annotations.Beta;
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
 import com.google.common.collect.SetMultimap;
 
 @Beta
-public class SimpleEventBus {
-  private final HandlerFindingStrategy finder;
-  private final SetMultimap<Class<?>, EventHandler> handlersByType;
-  //private LoadingCache<Class<?>, Set<Class<?>>> flattenHierarchyCache;
-  private WeakHashMap<Class<?>, Set<Class<?>>> flattenedHierarchies;
-  FlattenedHierarchyCacheLoader flatHierarchyLoader;
+public class SimpleEventBus extends AbstractEventBus {
+  private final SetMultimap<Class<?>, EventHandler> handlersByType = HashMultimap.create();
+  private final WeakHashMap<Class<?>, Set<Class<?>>> flattenedHierarchies = new WeakHashMap<Class<?>, Set<Class<?>>>();
+  private final FlattenedHierarchyCacheLoader flatHierarchyLoader = new FlattenedHierarchyCacheLoader();
   
   public SimpleEventBus() {
-    finder = new AnnotatedHandlerFinder();
-    handlersByType = HashMultimap.create();
-    /*flattenHierarchyCache = CacheBuilder.newBuilder()
-        .weakKeys()
-        .build(new FlattenedHierarchyCacheLoader());*/
-    flattenedHierarchies = new WeakHashMap<Class<?>, Set<Class<?>>>();
-    flatHierarchyLoader = new FlattenedHierarchyCacheLoader();
+    super(new AnnotatedHandlerFinder());
   }
-  
-  public void post(Object event) {
-    Set<Class<?>> dispatchTypes = flattenHierarchy(event.getClass());
-    boolean dispatched = false;
-    for (Class<?> eventType : dispatchTypes) {
-      Set<EventHandler> wrappers = getHandlersForEventType(eventType);
 
-      if (wrappers != null && !wrappers.isEmpty()) {
-        dispatched = true;
-        for (EventHandler wrapper : wrappers) {
-          dispatch(event, wrapper);
-        }
-      }
-    }
-
-    if (!dispatched && !(event instanceof DeadEvent)) {
-      post(new DeadEvent(this, event));
-    }
-  }
-  
-  public void register(Object toRegister) {
-    handlersByType.putAll(finder.findAllHandlers(toRegister));
-  }
-  
-  public void unregister(Object toUnregister) {
-    Multimap<Class<?>, EventHandler> handlersForObject = finder.findAllHandlers(toUnregister);
-    for (Entry<Class<?>, Collection<EventHandler>> entry : handlersForObject.asMap().entrySet()) {
-      Set<EventHandler> currentHandlers = getHandlersForEventType(entry.getKey());
-      Collection<EventHandler> eventMethodsInListener = entry.getValue();
-      
-      if (currentHandlers == null || !currentHandlers.containsAll(entry.getValue())) {
-        throw new IllegalArgumentException(
-            "missing event handler for an annotated method. Is " + toUnregister + " registered?");
-      }
-      currentHandlers.removeAll(eventMethodsInListener);
-    }
-  }
-  
-  Set<Class<?>> flattenHierarchy(Class<?> concreteClass) {
+  @Override
+  protected Set<Class<?>> flattenHierarchy(Class<?> concreteClass) {
     Set<Class<?>> hierarchy = flattenedHierarchies.get(concreteClass);
     if (hierarchy == null) {
       hierarchy = flatHierarchyLoader.load(concreteClass);
@@ -91,18 +44,28 @@ public class SimpleEventBus {
     
     return hierarchy;
   }
-  
-  Set<EventHandler> getHandlersForEventType(Class<?> type) {
-    return handlersByType.get(type);
+
+  @Override
+  protected SetMultimap<Class<?>, EventHandler> getHandlersByType() {
+    return handlersByType;
   }
-  
-  protected void dispatch(Object event, EventHandler wrapper) {
+
+  @Override
+  protected void enqueueEvent(Object event, EventHandler wrapper) {
+    dispatch(event, wrapper);
+  }
+
+  private void dispatch(Object event, EventHandler wrapper) {
     try {
       wrapper.handleEvent(event);
     } catch (InvocationTargetException e) {
-      //TODO
-      //logger.log(Level.SEVERE,
-      //    "Could not dispatch event: " + event + " to handler " + wrapper, e);
+      logger.log(Level.SEVERE,
+          "Could not dispatch event: " + event + " to handler " + wrapper, e);
     }
+  }
+
+  @Override
+  protected void dispatchQueuedEvents() {
+    //pass
   }
 }
